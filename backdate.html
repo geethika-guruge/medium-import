@@ -5,36 +5,331 @@
     <meta property="article:published_time" content="2024-09-12T21:57:48.000Z" />
 </head>
 
-<body>
-    <main>
-        <article>
-            <section>
-                <div class="pw-post-title">
-                    <h1>Backdating your Medium posts!</h1>
-                </div>
-                <p class="pw-post-body-paragraph">
-                    This is a test HTML page that you can import to Medium as 
-                    a template to backdate your post.
-                </p>
-                <p class="pw-post-body-paragraph">
-                    You'll know when you've successfully backdated your post
-                    by looking at the bottom of your article when you import
-                    to Medium: it should say something like: "Originally 
-                    published at *** on [Whatever your date is]."
-                </p>
-                <p class="pw-post-body-paragraph">
-                    If you enjoyed this tutorial and method, please 
-                    drop me a follow on 
-                    <a href="https://liaogg.medium.com">Medium</a>
-                    and 
-                    <a href="https://github.com/kevinMEH">Github.</a>
-                </p>
-                <p class="pw-post-body-paragraph">
-                    Thanks, and bye!
-                </p>
-            </section>
-        </article>
-    </main>
-</body>
 
+<h3><strong>Scale to Zero in EKS with KEDA </strong></h3>
+<p>Imagine you’re running a multi-tenant, production-grade kubernetes clusters on Amazon EKS, relying on the Horizontal Pod Autoscaler (HPA) for autoscaling the workloads. While HPA will server you well in gerneral, you will encounter some limitations as we grew and face with increasing demands on your clusters. This series of blogs will take a look at providing alternate autoscaling options for such situations</p>
+<p>In this blog, we’ll explore the limitations of HPA, and how we can address these challenges by adopting <strong>KEDA</strong> (Kubernetes Event-Driven Autoscaling).</p>
+<h3><strong>Limitations of Horizontal Pod Autoscaler (HPA)</strong></h3>
+<p>Kubernetes provides HPA to adjust the number of pod replicas based on CPU and memory utilization. While this is sufficient for many use cases, HPA comes with several limitations:</p>
+<ol>
+    <li>
+        <p><strong>No Scaling to Zero</strong>: HPA cannot scale workloads to zero as it uses metrics such as CPU and memory utilization which cannot reach zero. This is inefficient for intermittent workloads where scaling to zero would optimize costs.</p>
+    </li>
+    <li>
+        <p><strong>Limited to Metrics</strong>: HPA can only scale based on metrics like CPU and memory. It cannot scale based on custom events or HTTP traffic.</p>
+    </li>
+    <li>
+        <p><strong>Dependence on Metrics Aggregators</strong>: HPA requires integration with external metrics providers, such as the Kubernetes Metrics Server, Prometheus Adapter, or the deprecated k8s-cloudwatch-adapter, which adds operational complexity.</p>
+    </li>
+    <li>
+        <p><strong>Inaccuracy in Scaling Decisions</strong>: HPA's scaling decisions may not align precisely with actual target metrics, as the scaling algorithm often lags behind the real-time metrics of the system.</p>
+    </li>
+</ol>
+<p></p>
+<hr>
+<p></p>
+<h3><strong>Kubernetes External Metrics API Limitation</strong></h3>
+<p>As your clusters grow, the variety of workloads you manage increases, demanding more sophisticated autoscaling strategies. This often results in the need to scale workloads not only based on internal metrics but also on external metrics from services like Amazon Managed Prometheus, AWS CloudWatch, or Kafka. Kubernetes’ External Metrics API allows autoscaling based on these metrics, but there’s a key limitation: <strong>only one metrics server can serve external metrics (</strong><a target="_blank" rel="noopener noreferrer nofollow" href="http://external.metrics.k8s.io"><span style="color: rgb(24, 128, 56)"><strong>external.metrics.k8s.io</strong></span></a><strong>) per cluster</strong>.</p>
+<p>This would limit you to choose one external metrics server (e.g., CloudWatch Adapter or KEDA) for providing the external metrics. This limitation is particularly problematic when you need to scale on multiple event sources simultaneously.</p>
+<p></p>
+<hr>
+<p></p>
+<h3><strong>Transitioning from k8s-cloudwatch-adapter to KEDA</strong></h3>
+<p>The <strong>k8s-cloudwatch-adapter</strong> has been the go-to solution for many, to perform scaling based on metrics from AWS CloudWatch. This has been particularly useful for autoscaling based on SQS Queue length. However, since Kubernetes v1.22, this adapter has been deprecated, and AWS has stopped maintaining it. Instead, AWS now recommends using <strong>KEDA</strong> for event-driven autoscaling.</p>
+<p></p>
+<hr>
+<p></p>
+<h3><strong>Enter KEDA: Kubernetes Event-Driven Autoscaling</strong></h3>
+<p><strong>KEDA</strong> (Kubernetes Event-driven Autoscaler) is a lightweight, open-source component that allows Kubernetes workloads to autoscale based on external event-driven metrics. It works alongside HPA, extending its capabilities without duplicating its functionality. KEDA is flexible, enabling scaling for different Kubernetes workloads (e.g., Deployments, StatefulSets, Jobs) based on event sources outside the cluster.</p>
+<p>Some of KEDA’s key features include:</p>
+<ul>
+    <li>
+        <p>Scaling workloads based on external events such as AWS SQS, Kafka, Prometheus metrics, or custom event sources.</p>
+    </li>
+    <li>
+        <p>Support for scaling to and from zero, addressing one of the primary limitations of HPA.</p>
+    </li>
+    <li>
+        <p>Extensibility, allowing users to create custom scalers if needed.</p>
+    </li>
+    <li>
+        <p>Ability to scale different types of Kubernetes workloads such as Deployments, StatefulSets, and Jobs based on different type of events.</p>
+    </li>
+    <li>
+        <p>Ability to scale custom resources as long as the target Custom Resource defines a /scale subresource.</p>
+    </li>
+</ul>
+<p>Furthermore, KEDA is part of CNCF and is widely used for event scaling in Kubernetes, and has a big community backing.</p>
+<p><strong>How KEDA Works</strong>
+</p>
+<p>The below diagram illustrates how KEDA integrates with the Kubernetes Horizontal Pod Autoscaler (HPA), external event sources, and the Kubernetes etcd data store:</p>
+<p></p>
+<p><strong>Source: </strong><a target="_blank" rel="noopener noreferrer nofollow" href="http://keda.sh"><strong>keda.sh</strong></a>
+</p>
+<p>KEDA has two components which performs two key roles within Kubernetes:</p>
+<ul>
+    <li>
+        <p><strong>Agent</strong>: The KEDA operator acts as an agent, activating and deactivating Kubernetes workloads to scale them up or down (including scaling to and from zero). It manages HPA for applications and ensures that the desired number of replicas matches the current load.</p>
+    </li>
+    <li>
+        <p><strong>Metrics</strong>: KEDA also acts as a Kubernetes metrics server, exposing event-driven metrics (like queue length or stream lag) to HPA. These metrics inform HPA when to scale up or down based on external event sources.</p>
+    </li>
+</ul>
+<p>There is an optional 3rd component to KEDA as well</p>
+<ul>
+    <li>
+        <p><strong>Admission Webhooks</strong> - This automatically validates resource changes to prevent any misconfiguration. It enables enforcing best practices by using an admission controller. As an example, it will prevent multiple ScaledObjects to target the same scale target.</p>
+    </li>
+</ul>
+<p>*we will not be configuring any admission webhooks in this blog to avoid complexity</p>
+<p>
+    <br>
+    <br>
+</p>
+<p></p>
+<hr>
+<p></p>
+<h3><strong>KEDA Installation on Amazon EKS</strong></h3>
+<p>KEDA is installed in the cluster as two key components:</p>
+<ul>
+    <li>
+        <p><span style="color: rgb(24, 128, 56)">keda-operator</span>: Manages the scaling logic and maintains the application's HPA.</p>
+    </li>
+    <li>
+        <p><span style="color: rgb(24, 128, 56)">keda-operator-metrics-apiserver</span>: Acts as the metrics server, exposing external metrics to Kubernetes.</p>
+    </li>
+</ul>
+<p>In order to streamline the deployment of KEDA into your EKS cluster, you can use Helm and Terraform as follows</p>
+<h4><strong>1. Create an AWS IAM Role for KEDA</strong></h4>
+<p>First, an IAM role that allows KEDA to communicate with AWS services like CloudWatch or SQS:</p>
+<p>hcl</p>
+<p>Copy code</p>
+<p><span style="color: rgb(24, 128, 56)">resource "aws_iam_role" "keda-operator" {</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  name               = "keda-operator"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  assume_role_policy = module.keda-operator-trust-policy.json</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">}</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">data "aws_iam_policy_document" "keda-operator-trust-policy" {</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  statement {</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">    actions = ["sts:AssumeRoleWithWebIdentity"]</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">    principals {</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">      type = "Federated"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">      identifiers = ["arn:aws:iam::&lt;AWS_ACCOUNT_ID&gt;:oidc-provider/oidc.eks.&lt;REGION&gt;.</span><a target="_blank" rel="noopener noreferrer nofollow" href="http://amazonaws.com/id/<OIDC_ID>"><span style="color: rgb(24, 128, 56)">amazonaws.com/id/&lt;OIDC_ID&gt;</span></a><span style="color: rgb(24, 128, 56)">"]</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">    }</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">    condition {</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">      test     = "StringEquals"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">      variable = "oidc.eks.&lt;REGION&gt;.</span><a target="_blank" rel="noopener noreferrer nofollow" href="http://amazonaws.com/id/<OIDC_ID>:sub"><span style="color: rgb(24, 128, 56)">amazonaws.com/id/&lt;OIDC_ID&gt;:sub</span></a><span style="color: rgb(24, 128, 56)">"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">      values   = ["system:serviceaccount:keda:keda-operator"]</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">    }</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  }</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">}</span>
+</p>
+<h4><strong>2. Install KEDA via Helm</strong></h4>
+<p>With the IAM role created, KEDA can now be deployed using Helm. Below is a sample terraform snippet of how to install KEDA using a Helm release</p>
+<p>hcl</p>
+<p>Copy code</p>
+<p><span style="color: rgb(24, 128, 56)">resource "helm_release" "keda" {</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  name             = "keda"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  repository       = "</span><a target="_blank" rel="noopener noreferrer nofollow" href="https://kedacore.github.io/charts"><span style="color: rgb(24, 128, 56)">https://kedacore.github.io/charts</span></a><span style="color: rgb(24, 128, 56)">"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  chart            = "keda"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  version          = "2.8.2"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  namespace        = "keda"</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  create_namespace = true</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  values = [</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">    templatefile("${path.module}/values/keda.yaml", {</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">      keda_operator_role_arn = aws_iam_role.keda-operator.arn</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">    }),</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">  ]</span>
+</p>
+<p><span style="color: rgb(24, 128, 56)">}</span>
+</p>
+<p>Once installed, we can verify the health of KEDA’s components by running:</p>
+<p>bash</p>
+<p>Copy code</p>
+<p><span style="color: rgb(24, 128, 56)">kubectl get pods -n keda</span>
+</p>
+<p>You should see output similar to:</p>
+<p></p>
+<h3><strong>KEDA in Action</strong></h3>
+<p>In order to demonstrate scaling a workload based on an external metric, let's take a look at the below architecture.</p>
+<p>
+    <br>
+    <br>
+    <br>
+</p>
+<p></p>
+<p>We have deployed a demo application which will polls a SQS queue, and writes a record to a DynamoDB table upon receiving a message.</p>
+<p>Sample deployment file</p>
+<p><span style="color: rgb(86, 156, 214)">apiVersion</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">apps/v1</span>
+</p>
+<p><span style="color: rgb(86, 156, 214)">kind</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">Deployment</span>
+</p>
+<p><span style="color: rgb(86, 156, 214)">metadata</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">sqs-app</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">namespace</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">keda-test</span>
+</p>
+<p><span style="color: rgb(86, 156, 214)">spec</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">replicas</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(181, 206, 168)">1</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">selector</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">   </span><span style="color: rgb(86, 156, 214)">matchLabels</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">app</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">sqs-reader</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">template</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">   </span><span style="color: rgb(86, 156, 214)">metadata</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">labels</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">       </span><span style="color: rgb(86, 156, 214)">app</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">sqs-reader</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">   </span><span style="color: rgb(86, 156, 214)">spec</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">serviceAccountName</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">keda-service-account</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">containers</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     - </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">sqs-pull-app</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">       </span><span style="color: rgb(86, 156, 214)">image</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">khanasif1/sqs-reader:v0.12</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">       </span><span style="color: rgb(86, 156, 214)">imagePullPolicy</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">Always</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">       </span><span style="color: rgb(86, 156, 214)">env</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">       - </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">SQS_QUEUE_URL</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">         </span><span style="color: rgb(86, 156, 214)">value</span><span style="color: rgb(204, 204, 204)">: </span><a target="_blank" rel="noopener noreferrer nofollow" href="https://sqs.ap-southeast-2.amazonaws.com/111122222/keda-demo-queue.fifo"><span style="color: rgb(206, 145, 120)">https://sqs.ap-southeast-2.amazonaws.com/111122222/keda-demo-queue.fifo</span></a>
+</p>
+<p><span style="color: rgb(204, 204, 204)">       - </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">DYNAMODB_TABLE</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">         </span><span style="color: rgb(86, 156, 214)">value</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">payments</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">       - </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">AWS_REGION</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">         </span><span style="color: rgb(86, 156, 214)">value</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">ap-southeast-2</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">       </span><span style="color: rgb(86, 156, 214)">resources</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">         </span><span style="color: rgb(86, 156, 214)">requests</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">           </span><span style="color: rgb(86, 156, 214)">memory</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">"64Mi"</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">           </span><span style="color: rgb(86, 156, 214)">cpu</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">"250m"</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">         </span><span style="color: rgb(86, 156, 214)">limits</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">           </span><span style="color: rgb(86, 156, 214)">memory</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">"128Mi"</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">           </span><span style="color: rgb(86, 156, 214)">cpu</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">"500m"</span>
+</p>
+<p>Keda ScaledObject</p>
+<p>This is a key component of the whole orchestration, it defines the criteria for autoscaling the workload based on external metrics or event-driven triggers. It specifies the target deployment, the scaling behaviour, and the metrics or events (like queue length) that KEDA should monitor, allowing the workload to scale dynamically in response to real-time demand.</p>
+<p>Below is a sample ScaledObject</p>
+<p><span style="color: rgb(86, 156, 214)">apiVersion</span><span style="color: rgb(204, 204, 204)">: </span><a target="_blank" rel="noopener noreferrer nofollow" href="http://keda.sh/v1alpha1"><span style="color: rgb(206, 145, 120)">keda.sh/v1alpha1</span></a>
+</p>
+<p><span style="color: rgb(86, 156, 214)">kind</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">ScaledObject</span>
+</p>
+<p><span style="color: rgb(86, 156, 214)">metadata</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">aws-sqs-queue-scaledobject</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">namespace</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">${SQS_TARGET_NAMESPACE}</span>
+</p>
+<p><span style="color: rgb(86, 156, 214)">spec</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">scaleTargetRef</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">   </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">${SQS_TARGET_DEPLOYMENT}</span><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(106, 153, 85)">#K8s deployement to target</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">minReplicaCount</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(181, 206, 168)">0</span><span style="color: rgb(204, 204, 204)">  </span><span style="color: rgb(106, 153, 85)"># We don't want pods if the queue is empty nginx-deployment</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">maxReplicaCount</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(181, 206, 168)">2000</span><span style="color: rgb(204, 204, 204)">  </span><span style="color: rgb(106, 153, 85)"># We don't want to have more than 15 replicas</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">pollingInterval</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(181, 206, 168)">30</span><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(106, 153, 85)"># How frequently we should go for metrics (in seconds)</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">cooldownPeriod</span><span style="color: rgb(204, 204, 204)">:  </span><span style="color: rgb(181, 206, 168)">10</span><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(106, 153, 85)"># How many seconds should we wait for downscale</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">triggers</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> - </span><span style="color: rgb(86, 156, 214)">type</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">aws-sqs-queue</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">   </span><span style="color: rgb(86, 156, 214)">authenticationRef</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">keda-aws-credentials</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">   </span><span style="color: rgb(86, 156, 214)">metadata</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">queueURL</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">${SQS_QUEUE_URL}</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">queueLength</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">"2"</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">awsRegion</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">${AWS_REGION}</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">     </span><span style="color: rgb(86, 156, 214)">identityOwner</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">operator</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">---</span>
+</p>
+<p><span style="color: rgb(86, 156, 214)">apiVersion</span><span style="color: rgb(204, 204, 204)">: </span><a target="_blank" rel="noopener noreferrer nofollow" href="http://keda.sh/v1alpha1"><span style="color: rgb(206, 145, 120)">keda.sh/v1alpha1</span></a>
+</p>
+<p><span style="color: rgb(86, 156, 214)">kind</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">TriggerAuthentication</span>
+</p>
+<p><span style="color: rgb(86, 156, 214)">metadata</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">name</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">keda-aws-credentials</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">namespace</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">${SQS_TARGET_NAMESPACE}</span>
+</p>
+<p><span style="color: rgb(86, 156, 214)">spec</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)"> </span><span style="color: rgb(86, 156, 214)">podIdentity</span><span style="color: rgb(204, 204, 204)">:</span>
+</p>
+<p><span style="color: rgb(204, 204, 204)">   </span><span style="color: rgb(86, 156, 214)">provider</span><span style="color: rgb(204, 204, 204)">: </span><span style="color: rgb(206, 145, 120)">aws-eks</span>
+</p>
+<p>In the below demonstration you can see this all in action as follows</p>
+<p>Terminal 1 (top left hand corner)
+    <br>kubectl get pods -n keda-test -w
+    <br>This keeps watching the pods in the keda-test workspace, note that there are no pods at the start, and it grows as the queue length increases (terminal 2)
+    <br>
+    <br>Terminal 2 (bottom left hand corner)</p>
+<p>This is running a script to print the sqs queue length on the screen</p>
+<p>Terminal 3 (top right hand corner)</p>
+<p>This is running a script to push messages to the sqs queue</p>
+<p>Terminal 4 (bottom right hand corner)</p>
+<p>This is running a script to count the number of entries in the DynamoDB table, not that the item count stays 0 while there are no pods at the start, but then start increasing as the pods come up to process the messages in the queue</p>
+<h3><strong>Conclusion</strong></h3>
+<p>By adopting KEDA, you can unlock the ability to scale Kubernetes workloads based on external even-driven metrics, overcoming the limitations of HPA. This will allows you to cater to diverse scaling requirements, enabling more efficient and cost-effective scaling for your workloads. Whether it's scaling based on external metrics like AWS CloudWatch or event sources like Kafka, KEDA provides a flexible and extensible solution to meet our growing scaling needs.</p>
+    
 </html>
